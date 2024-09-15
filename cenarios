@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Preparação do ambiente
+FILE="/mnt/pendrive/arquivo_grande_1GB"
+
+# Verificando se o arquivo de entrada existe
+if [ ! -f "$FILE" ]; then
+  echo "Arquivo $FILE não encontrado!"
+  exit 1
+fi
+
+echo "Iniciando teste de limitação de CPU com cgroups, cpulimit e nice..."
+echo "Arquivo a ser utilizado: $FILE"
+echo
+
+# Cenário 1 - Limitação com cgroups
+echo "Cenário 1 - Limitação de CPU com cgroups"
+sudo cgcreate -g cpu:/gziplimit
+sudo cgset -r cpu.shares=512 /gziplimit
+
+echo "Medindo trocas de contexto antes da execução com cgroups..."
+cat /proc/$(pgrep gzip)/status | grep voluntary_ctxt_switches
+
+echo "Executando compressão com cgroups..."
+time sudo cgexec -g cpu:/gziplimit gzip -k $FILE
+
+echo "Medindo trocas de contexto após a execução com cgroups..."
+cat /proc/$(pgrep gzip)/status | grep voluntary_ctxt_switches
+
+echo "Monitorando uso de CPU com pidstat (cgroups)..."
+pidstat -u -p $(pgrep gzip) 1
+echo
+
+# Cenário 2 - Limitação com cpulimit
+echo "Cenário 2 - Limitação de CPU com cpulimit"
+echo "Medindo trocas de contexto antes da execução com cpulimit..."
+cat /proc/$(pgrep gzip)/status | grep voluntary_ctxt_switches
+
+echo "Executando compressão com cpulimit (30%)..."
+time sudo cpulimit -l 30 -- gzip -k $FILE
+
+echo "Medindo trocas de contexto após a execução com cpulimit..."
+cat /proc/$(pgrep gzip)/status | grep voluntary_ctxt_switches
+
+echo "Monitorando uso de CPU com pidstat (cpulimit)..."
+pidstat -u -p $(pgrep gzip) 1
+echo
+
+# Cenário 3 - Alteração de prioridade com nice
+echo "Cenário 3 - Alteração de prioridade com nice"
+echo "Medindo trocas de contexto antes da execução com nice..."
+cat /proc/$(pgrep gzip)/status | grep voluntary_ctxt_switches
+
+echo "Executando compressão com nice (prioridade baixa)..."
+time nice -n 19 gzip -k $FILE
+
+echo "Medindo trocas de contexto após a execução com nice..."
+cat /proc/$(pgrep gzip)/status | grep voluntary_ctxt_switches
+
+echo "Monitorando uso de CPU com pidstat (nice)..."
+pidstat -u -p $(pgrep gzip) 1
+echo
+
+echo "Testes final
