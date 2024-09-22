@@ -1,1 +1,65 @@
+#!/bin/bash
 
+# Variáveis
+arq="/mnt/pendrive/arquivo_2GB"
+arq_gz="$arq.gz"
+cg="/gziplimit"
+log="log_compressao.txt"
+
+# Função para coletar a temperatura atual da CPU
+get_temp() {
+  sensors | grep 'Core 0:' | awk '{print $3}' | tr -d '+°C'
+}
+
+# Função para medir o tempo de execução de um comando
+measure_time() {
+  local start=$(date +%s)
+  $1
+  local end=$(date +%s)
+  local runtime=$((end - start))
+  echo $runtime
+}
+
+# Cria o arquivo de log
+echo "Log de Compressão e Descompressão" > $log
+
+# Coleta a temperatura antes da compressão normal
+temp_before=$(get_temp)
+echo "Temperatura antes da compressão normal: $temp_before°C" | tee -a $log
+
+# Mede o tempo de compressão
+echo "Compactando o arquivo (sem limitação de CPU)..."
+time_normal=$(measure_time "gzip -k $arq")
+temp_after=$(get_temp)
+
+echo "Tempo de compressão normal: $time_normal segundos" | tee -a $log
+echo "Temperatura após compressão normal: $temp_after°C" | tee -a $log
+
+# Descompacta o arquivo
+echo "Descompactando o arquivo..."
+gunzip -k $arq_gz
+
+# Cria e configura o cgroup para limitar a CPU a 40%
+echo "Configurando cgroup para limitar o uso de CPU a 40%..."
+sudo cgcreate -g cpu:$cg
+sudo cgset -r cpu.shares=409 /gziplimit
+
+# Coleta a temperatura antes da compressão com cgroup
+temp_before_cg=$(get_temp)
+echo "Temperatura antes da compressão com cgroup: $temp_before_cg°C" | tee -a $log
+
+# Mede o tempo de compressão com limitação de CPU
+echo "Compactando o arquivo com cgroup (limite de 40% da CPU)..."
+time_cg=$(measure_time "sudo cgexec -g cpu:$cg gzip -k $arq")
+temp_after_cg=$(get_temp)
+
+# Resultados
+echo "Tempo de compressão com cgroup: $time_cg segundos" | tee -a $log
+echo "Temperatura após compressão com cgroup: $temp_after_cg°C" | tee -a $log
+
+# Conclusão
+echo "Diferença de tempo: Compressão sem cgroup: $time_normal segundos, Compressão com cgroup: $time_cg segundos" | tee -a $log
+echo "Diferença de temperatura: Antes: $temp_before°C, Depois com cgroup: $temp_after_cg°C" | tee -a $log
+
+# Finaliza
+echo "Log finalizado. Verifique o arquivo $log para detalhes."
