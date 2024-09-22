@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Variáveis
 arq="/mnt/pendrive/arquivo_2GB"
 arq_gz="$arq.gz"
 cg="/gziplimit"
